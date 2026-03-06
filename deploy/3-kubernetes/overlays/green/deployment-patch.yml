@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rx-mi-aplicacion-deployment
+spec:
+  selector:
+    matchLabels:
+      version: green
+  template:
+    metadata:
+      labels:
+        version: green
+    spec:
+      containers:
+      - name: app
+        envFrom:
+        - configMapRef:
+            name: rx-mi-aplicacion-config-green
+        env:
+        - name: DEPLOYMENT_COLOR
+          value: "green"
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: rx-mi-aplicacion-config-green
+              key: PROJECT_PORT

@@ -1,0 +1,41 @@
+# Complemento de desarrollo: se fusiona con deploy/simple-compose/docker-compose.yml.
+# Incluye volumen (código montado) y hot reload para no reconstruir al cambiar archivos.
+# Uso: make deploy-simple (con DOCKER_COMPOSE_APP=app/docker-compose.dev.yml en .env)
+
+# Comando del proceso hijo: carga app/.env (override) y arranca la app. Así el hot reload de .env
+# no depende de código en index.js; se define aquí.
+services:
+  app:
+    user: '0'
+    environment:
+      - NODE_ENV=development
+      - DEV_CHILD_CMD=set -a; [ -f .env ] && . ./.env; set +a; exec bun --watch run index.js
+    volumes:
+      - ../../app:/app
+      - app_node_modules:/app/node_modules
+    command: ['bun', 'run', 'scripts/dev-watch.js']
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'wget',
+          '--quiet',
+          '--tries=1',
+          '--spider',
+          'http://127.0.0.1:${PROJECT_PORT}/health'
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+volumes:
+  app_node_modules:

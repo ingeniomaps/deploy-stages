@@ -1,0 +1,5 @@
+# Solo se usa cuando PORTS está definido en .env (formato publicado:contenedor = host:contenedor).
+services:
+  app:
+    ports:
+      - ${SWARM_PUBLISHED_PORT}:${PROJECT_PORT}
