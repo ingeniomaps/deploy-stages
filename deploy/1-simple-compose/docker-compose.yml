@@ -1,0 +1,27 @@
+# extra_hosts se generan dinámicamente: ejecutar scripts/generate-extra-hosts.sh antes de up.
+# Red: ensure-network.sh crea la red si no existe; aquí se usa como externa.
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: ${DOCKERFILE_PATH:-Dockerfile}
+    image: ${PROJECT_NAME}:latest
+    container_name: ${PROJECT_PREFIX:+${PROJECT_PREFIX}-}${PROJECT_NAME}
+    restart: always
+    expose:
+      - '${PROJECT_PORT}'
+    environment:
+      - PORT=${PROJECT_PORT}
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '7'
+    networks:
+      - default
+
+networks:
+  default:
+    name: ${NETWORK}
+    external: true

@@ -1,0 +1,52 @@
+# Docker Swarm Stack — Compose Specification (sin version)
+# Variables: PROJECT_NAME, PROJECT_IMAGE, PROJECT_VERSION, PROJECT_PORT, REPLICAS, HEALTH_PATH.
+# ports: solo se añaden si PORTS está definido en .env (Makefile añade -c docker-stack.ports.yml).
+# environment adicional: docker-stack.env-include.yml (generado; lee .env y ENV_FILE y escribe valores). Red: ensure-network-swarm.sh, external.
+
+services:
+  app:
+    image: ${PROJECT_IMAGE}:${PROJECT_VERSION}
+    environment:
+      PORT: ${PROJECT_PORT}
+      CONFIG_REV: ${CONFIG_REV}
+    expose:
+      - '${PROJECT_PORT}'
+    networks:
+      - default
+    deploy:
+      replicas: ${REPLICAS}
+      update_config:
+        parallelism: 1
+        delay: ${UPDATE_DELAY}
+        order: start-first
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'wget',
+          '--quiet',
+          '--tries=1',
+          '--spider',
+          'http://localhost:${PROJECT_PORT}${HEALTH_PATH}'
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '7'
+
+networks:
+  default:
+    name: ${SWARM_NETWORK_NAME}
+    external: true

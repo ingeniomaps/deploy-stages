@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rx-mi-aplicacion-deployment
+  labels:
+    app: rx-mi-aplicacion
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rx-mi-aplicacion
+  template:
+    metadata:
+      labels:
+        app: rx-mi-aplicacion
+    spec:
+      containers:
+      - name: app
+        image: mi-aplicacion:latest
+        imagePullPolicy: IfNotPresent
+        resources:
+          requests:
+            cpu: 50m
+        ports:
+        - name: http
+          containerPort: 3000
+        envFrom:
+        - configMapRef:
+            name: rx-mi-aplicacion-config
+        env:
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: rx-mi-aplicacion-config
+              key: PROJECT_PORT
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 6
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 25
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 4

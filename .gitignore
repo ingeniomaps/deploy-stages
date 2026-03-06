@@ -1,0 +1,32 @@
+.claude/
+CLAUDE.md
+
+# Node
+node_modules/
+
+# .env (valores reales en cualquier nivel; solo subir .env.example)
+.env
+.env-*
+.env copy
+!.env.example
+
+# Blue-Green Compose: carpeta de proyectos (snippets extraídos)
+projects/
+
+# Blue-Green Compose: archivos generados por los scripts
+docker-compose.env*
+docker-compose.extra*
+docker-compose.override*
+
+# Swarm: archivo generado por scripts/generate-env-file-include.sh
+docker-stack.env*
+
+# Backups de .env
+backup/
+backup_prev/
+
+# Kubernetes: archivos generados en overlays (Kustomize no permite paths fuera del overlay)
+overlays/*/project-deployment-patch.yml
+overlays/*/health-path-patch.json
+overlays/*/kustomization.yaml
+overlays/*/hpa.yml

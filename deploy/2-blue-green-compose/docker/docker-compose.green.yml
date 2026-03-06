@@ -1,0 +1,40 @@
+# Blue-Green Deployment: Green Stack
+# Usage: docker compose -f docker/docker-compose.green.yml --env-file .env up -d
+# Logs: stdout; Docker rotates via json-file (max-size 10m, keep 7 files).
+
+services:
+  app-green:
+    hostname: ${PROJECT_NAME}-green
+    restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '7'
+    image: ${PROJECT_IMAGE}:${PROJECT_VERSION:-latest}
+    expose:
+      - ${PROJECT_PORT}
+    environment:
+      PORT: ${PROJECT_PORT}
+      DEPLOYMENT_COLOR: green
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'wget',
+          '--quiet',
+          '--tries=1',
+          '--spider',
+          'http://localhost:${PROJECT_PORT}${HEALTH_PATH}'
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      default:
+
+networks:
+  default:
+    name: ${NETWORK}
+    external: true
