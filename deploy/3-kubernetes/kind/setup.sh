@@ -7,7 +7,7 @@ set -euo pipefail
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly K8S_DIR="${SCRIPT_DIR}/.."
 readonly PROJECT_ROOT="$(cd "${K8S_DIR}/../.." && pwd)"
-readonly ENV_FILE="${PROJECT_ROOT}/.env"
+readonly ENV_FILE="${ENV_FILE:-${PROJECT_ROOT}/.env}"
 readonly KIND_CONFIG="${SCRIPT_DIR}/kind-config.yaml"
 
 readonly RED='\033[0;31m'

@@ -1,18 +1,18 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: rx-mi-aplicacion-deployment
+  name: mi-aplicacion-deployment
   labels:
-    app: rx-mi-aplicacion
+    app: mi-aplicacion
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: rx-mi-aplicacion
+      app: mi-aplicacion
   template:
     metadata:
       labels:
-        app: rx-mi-aplicacion
+        app: mi-aplicacion
     spec:
       containers:
       - name: app
@@ -26,12 +26,12 @@ spec:
           containerPort: 3000
         envFrom:
         - configMapRef:
-            name: rx-mi-aplicacion-config
+            name: mi-aplicacion-config
         env:
         - name: PORT
           valueFrom:
             configMapKeyRef:
-              name: rx-mi-aplicacion-config
+              name: mi-aplicacion-config
               key: PROJECT_PORT
         readinessProbe:
           httpGet:

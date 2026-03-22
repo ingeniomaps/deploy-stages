@@ -3,7 +3,7 @@ kind: Kustomization
 resources:
   - ../../base
   - hpa.yml
-nameSuffix: "-blue"
+nameSuffix: '-blue'
 patches:
   - path: deployment-patch.yml
     target:
@@ -14,12 +14,12 @@ patches:
 patchesJson6902:
   - target:
       kind: Deployment
-      name: rx-mi-aplicacion-deployment-blue
+      name: mi-aplicacion-deployment-blue
     path: health-path-patch.json
 images:
   - name: mi-aplicacion
     newName: mi-aplicacion
-    newTag: "latest"
+    newTag: 'latest'
 replicas:
-  - name: rx-mi-aplicacion-deployment
+  - name: mi-aplicacion-deployment
     count: 1
