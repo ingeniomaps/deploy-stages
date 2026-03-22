@@ -17,7 +17,8 @@ if [[ ! -f "${BACKUP_PREV_ENV}" ]]; then
     exit 1
 fi
 
-cp -f "${BACKUP_PREV_ENV}" "${PROJECT_ROOT}/.env"
+readonly TARGET_ENV="${ENV_FILE:-${PROJECT_ROOT}/.env}"
+cp -f "${BACKUP_PREV_ENV}" "${TARGET_ENV}"
 
 # Restaurar cada archivo listado en ENV_FILE del backup (leer desde el .env que acabamos de copiar)
 while IFS= read -r line || [[ -n "${line}" ]]; do

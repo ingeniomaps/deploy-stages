@@ -9,7 +9,7 @@ set -euo pipefail
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SWARM_DIR="${SCRIPT_DIR}/.."
 readonly PROJECT_ROOT="$(cd "${SWARM_DIR}/../.." && pwd)"
-readonly ROOT_ENV="${PROJECT_ROOT}/.env"
+readonly ROOT_ENV="${ENV_FILE:-${PROJECT_ROOT}/.env}"
 readonly OUT_FILE="${SWARM_DIR}/docker-stack.env-include.yml"
 
 # Parsea una línea KEY=VALUE; escribe a la asociativa ENV_ARR (nombre pasado como string).
