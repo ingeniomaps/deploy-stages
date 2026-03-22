@@ -8,7 +8,7 @@ set -euo pipefail
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SWARM_DIR="${SCRIPT_DIR}/.."
 readonly PROJECT_ROOT="$(cd "${SWARM_DIR}/../.." && pwd)"
-readonly ROOT_ENV="${PROJECT_ROOT}/.env"
+readonly ROOT_ENV="${ENV_FILE:-${PROJECT_ROOT}/.env}"
 readonly BACKUP_DIR="${SWARM_DIR}/backup"
 readonly BACKUP_PREV_DIR="${SWARM_DIR}/backup_prev"
 

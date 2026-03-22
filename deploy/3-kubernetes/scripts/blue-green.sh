@@ -7,7 +7,9 @@ set -euo pipefail
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly K8S_DIR="${SCRIPT_DIR}/.."
 readonly PROJECT_ROOT="$(cd "${K8S_DIR}/../.." && pwd)"
-readonly ENV_FILE="${PROJECT_ROOT}/.env"
+readonly ENV_FILE="${ENV_FILE:-${PROJECT_ROOT}/.env}"
+# Raíz real del proyecto (donde vive el .env) — puede diferir de PROJECT_ROOT cuando se usa como submodulo
+readonly REAL_ROOT="$(dirname "${ENV_FILE}")"
 
 readonly RED='\033[0;31m'
 readonly GREEN_C='\033[0;32m'
@@ -61,6 +63,11 @@ RESOURCE_PREFIX="${PROJECT_PREFIX:+${PROJECT_PREFIX}-}${PROJECT_NAME}"
 DEPLOYMENT_BASE="${RESOURCE_PREFIX}-deployment"
 SERVICE_NAME="${RESOURCE_PREFIX}-service"
 NAMESPACE="${K8S_NAMESPACE:-default}"
+# Si el proyecto tiene base propia, el Service no usa RESOURCE_PREFIX
+_PROJECT_BASE="${REAL_ROOT}/${K8S_PROJECT_DIR}/base"
+if [[ -d "${_PROJECT_BASE}" && -f "${_PROJECT_BASE}/kustomization.yaml" && -f "${REAL_ROOT}/${K8S_PROJECT_DIR}/service.yml" ]]; then
+    SERVICE_NAME="$(grep 'name:' "${REAL_ROOT}/${K8S_PROJECT_DIR}/service.yml" | head -1 | awk '{print $2}')"
+fi
 
 # --- Funciones auxiliares ---
 
@@ -92,41 +99,34 @@ extract_k8s_from_image() {
     docker rm "${temp_id}" >/dev/null 2>&1 || true
 }
 
-# Genera el kustomization.yaml y el patch de HEALTH_PATH en un overlay antes de aplicarlo.
-# Kustomize solo permite archivos dentro del overlay; copiamos el patch del proyecto ahí.
+# Genera el kustomization.yaml en un overlay antes de aplicarlo.
+# Si el proyecto tiene base propia (K8S_PROJECT_DIR/base/), la usa en vez de la genérica.
 generate_overlay_kustomization() {
     local color="${1:?}"
     local replicas="${2:-1}"
     local overlay_dir="${K8S_DIR}/overlays/${color}"
-    local project_patch_abs="${PROJECT_ROOT}/${K8S_PROJECT_DIR}/deployment-patch.yml"
-    local project_patch_inside="${overlay_dir}/project-deployment-patch.yml"
-    local health_patch="${overlay_dir}/health-path-patch.json"
-    # Escapar HEALTH_PATH para JSON (comillas y backslash)
-    local health_path_json
-    health_path_json="$(printf '%s' "${HEALTH_PATH}" | sed 's/\\/\\\\/g; s/"/\\"/g')"
-    health_path_json="\"${health_path_json}\""
-
-    # JSON Patch (RFC 6902) para readiness/liveness path desde .env
-    cat > "${health_patch}" << EOF
-[
-  {"op": "replace", "path": "/spec/template/spec/containers/0/readinessProbe/httpGet/path", "value": ${health_path_json}},
-  {"op": "replace", "path": "/spec/template/spec/containers/0/livenessProbe/httpGet/path", "value": ${health_path_json}}
-]
-EOF
-
     local deployment_name="${DEPLOYMENT_BASE}-${color}"
 
-    # HPA por overlay (min/max replicas y target CPU desde .env)
+    # Base del proyecto vs genérica del submodulo
+    local project_base="${REAL_ROOT}/${K8S_PROJECT_DIR}/base"
+    local base_ref="../../base"
+    if [[ -d "${project_base}" && -f "${project_base}/kustomization.yaml" ]]; then
+        # Kustomize requiere path relativo desde el overlay
+        base_ref="$(python3 -c "import os; print(os.path.relpath('${project_base}', '${overlay_dir}'))")"
+    fi
+
+    # HPA por overlay — nombre del deployment varía según base propia o genérica
+    local hpa_deploy_ref="${deployment_name}"
     cat > "${overlay_dir}/hpa.yml" << EOF
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: ${RESOURCE_PREFIX}-hpa
+  name: ${PROJECT_NAME}-hpa
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: ${deployment_name}
+    name: ${hpa_deploy_ref}
   minReplicas: ${HPA_MIN_REPLICAS}
   maxReplicas: ${HPA_MAX_REPLICAS}
   metrics:
@@ -138,9 +138,77 @@ spec:
         averageUtilization: ${HPA_CPU_PERCENT}
 EOF
 
-    if [[ -f "${project_patch_abs}" ]]; then
-        cp -f "${project_patch_abs}" "${project_patch_inside}"
+    # Si usa base propia, genera deployment-patch con version/configmap/color
+    if [[ "${base_ref}" != "../../base" ]]; then
+        rm -f "${overlay_dir}/project-deployment-patch.yml"
+        local base_deploy_name="${PROJECT_NAME}-deployment"
+        local configmap_name="${RESOURCE_PREFIX}-config-${color}"
+        cat > "${overlay_dir}/deployment-patch.yml" << EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${base_deploy_name}
+spec:
+  selector:
+    matchLabels:
+      version: ${color}
+  template:
+    metadata:
+      labels:
+        version: ${color}
+    spec:
+      containers:
+      - name: app
+        envFrom:
+        - configMapRef:
+            name: ${configmap_name}
+        env:
+        - name: DEPLOYMENT_COLOR
+          value: "${color}"
+EOF
         cat > "${overlay_dir}/kustomization.yaml" << EOF
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ${base_ref}
+  - hpa.yml
+namePrefix: "${PROJECT_PREFIX:+${PROJECT_PREFIX}-}"
+nameSuffix: "-${color}"
+labels:
+  - pairs:
+      app: ${RESOURCE_PREFIX}
+    includeSelectors: true
+patches:
+  - path: deployment-patch.yml
+    target:
+      kind: Deployment
+images:
+  - name: ${PROJECT_NAME}
+    newName: ${PROJECT_IMAGE}
+    newTag: "${PROJECT_VERSION}"
+replicas:
+  - name: ${base_deploy_name}
+    count: ${replicas}
+EOF
+    else
+        # Base genérica: aplicar patches del proyecto si existen
+        local project_patch_abs="${REAL_ROOT}/${K8S_PROJECT_DIR}/deployment-patch.yml"
+        local project_patch_inside="${overlay_dir}/project-deployment-patch.yml"
+        local health_patch="${overlay_dir}/health-path-patch.json"
+        local health_path_json
+        health_path_json="$(printf '%s' "${HEALTH_PATH}" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+        health_path_json="\"${health_path_json}\""
+
+        cat > "${health_patch}" << EOF
+[
+  {"op": "replace", "path": "/spec/template/spec/containers/0/readinessProbe/httpGet/path", "value": ${health_path_json}},
+  {"op": "replace", "path": "/spec/template/spec/containers/0/livenessProbe/httpGet/path", "value": ${health_path_json}}
+]
+EOF
+
+        if [[ -f "${project_patch_abs}" ]]; then
+            cp -f "${project_patch_abs}" "${project_patch_inside}"
+            cat > "${overlay_dir}/kustomization.yaml" << EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -167,9 +235,9 @@ replicas:
   - name: ${DEPLOYMENT_BASE}
     count: ${replicas}
 EOF
-    else
-        rm -f "${project_patch_inside}"
-        cat > "${overlay_dir}/kustomization.yaml" << EOF
+        else
+            rm -f "${project_patch_inside}"
+            cat > "${overlay_dir}/kustomization.yaml" << EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -193,6 +261,7 @@ replicas:
   - name: ${DEPLOYMENT_BASE}
     count: ${replicas}
 EOF
+        fi
     fi
 }
 
@@ -241,8 +310,8 @@ patch_k8s_names() {
     )
 
     # Incluir parches especificos del proyecto si existen
-    local project_deploy_patch="${PROJECT_ROOT}/${K8S_PROJECT_DIR}/deployment-patch.yml"
-    local project_service_patch="${PROJECT_ROOT}/${K8S_PROJECT_DIR}/service-patch.yml"
+    local project_deploy_patch="${REAL_ROOT}/${K8S_PROJECT_DIR}/deployment-patch.yml"
+    local project_service_patch="${REAL_ROOT}/${K8S_PROJECT_DIR}/service-patch.yml"
     if [[ -f "${project_deploy_patch}" ]]; then
         files+=("${project_deploy_patch}")
     fi
@@ -271,7 +340,7 @@ patch_k8s_names() {
     done
 
     # nodePort del Service: revertir y reaplicar (idempotente)
-    for f in "${K8S_DIR}/service/service.yml" "${PROJECT_ROOT}/${K8S_PROJECT_DIR}/service-patch.yml"; do
+    for f in "${K8S_DIR}/service/service.yml" "${REAL_ROOT}/${K8S_PROJECT_DIR}/service-patch.yml"; do
         [[ -f "${f}" ]] || continue
         sed -i -e "s/nodePort: ${K8S_NODE_PORT}/nodePort: 30080/g" "${f}"
         sed -i -e "s/nodePort: 30080/nodePort: ${K8S_NODE_PORT}/g" "${f}"
@@ -297,14 +366,26 @@ cmd_deploy() {
     print_message "${BLUE_C}" "Generando ConfigMap desde .env..."
     bash "${SCRIPT_DIR}/generate-configmap.sh"
 
-    # 2. Ajustar nombres en manifests base/servicio según PROJECT_NAME (antes de aplicar)
-    patch_k8s_names
+    # 2. Detectar si el proyecto tiene base propia
+    local project_base="${REAL_ROOT}/${K8S_PROJECT_DIR}/base"
+    local has_project_base=false
+    [[ -d "${project_base}" && -f "${project_base}/kustomization.yaml" ]] && has_project_base=true
 
-    # 3. Aplicar Service (siempre) y solo el/los ConfigMap que toquen: no pisar el inactivo
+    # 3. Ajustar nombres en manifests genéricos (solo si no hay base propia)
+    if [[ "${has_project_base}" == false ]]; then
+        patch_k8s_names
+    fi
+
+    # 4. Aplicar Service
     local active
     active=$(get_active_color)
+    local service_file="${K8S_DIR}/service/service.yml"
+    local project_service="${REAL_ROOT}/${K8S_PROJECT_DIR}/service.yml"
+    if [[ "${has_project_base}" == true && -f "${project_service}" ]]; then
+        service_file="${project_service}"
+    fi
     print_message "${BLUE_C}" "Aplicando Service..."
-    kubectl apply -f "${K8S_DIR}/service/service.yml" -n "${NAMESPACE}"
+    kubectl apply -f "${service_file}" -n "${NAMESPACE}"
     if [[ -n "${active}" ]]; then
         print_message "${BLUE_C}" "Aplicando solo ConfigMap del activo (${active}); el inactivo no se toca (rollback OK)."
         kubectl apply -f "${K8S_DIR}/service/configmap-${active}.yml" -n "${NAMESPACE}"
@@ -315,8 +396,8 @@ cmd_deploy() {
     fi
 
     # 5. Aplicar recursos/patches específicos del proyecto (si existen)
-    local project_service_dir="${PROJECT_ROOT}/${K8S_PROJECT_DIR}/service"
-    local project_service_patch="${PROJECT_ROOT}/${K8S_PROJECT_DIR}/service-patch.yml"
+    local project_service_dir="${REAL_ROOT}/${K8S_PROJECT_DIR}/service"
+    local project_service_patch="${REAL_ROOT}/${K8S_PROJECT_DIR}/service-patch.yml"
     if [[ -d "${project_service_dir}" ]]; then
         print_message "${BLUE_C}" "Aplicando Service extra desde ${K8S_PROJECT_DIR}/service..."
         kubectl apply -k "${project_service_dir}"

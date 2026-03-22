@@ -1,2 +1,6 @@
 # Contenido extraido de la imagen (k8s del proyecto) cuando se usa K8S_IMAGE_PATH
 projects/
+
+# ConfigMaps generados por generate-configmap.sh (contienen valores de .env)
+service/configmap-blue.yml
+service/configmap-green.yml
