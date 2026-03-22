@@ -9,7 +9,7 @@ readonly SCRIPT_DIR
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 readonly PROJECT_ROOT
 readonly DOCKER_DIR="${SCRIPT_DIR}/../docker"
-readonly ENV_FILE="${PROJECT_ROOT}/.env"
+readonly ENV_FILE="${ENV_FILE:-${PROJECT_ROOT}/.env}"
 
 # shellcheck source=../../scripts/lib/parse-env.sh
 source "${PROJECT_ROOT}/deploy/scripts/lib/parse-env.sh"
@@ -80,6 +80,36 @@ build_compose_f_args() {
                if [[ -f "${COMPOSE_OVERRIDE}" ]]; then COMPOSE_F_ARGS+=(-f "${COMPOSE_OVERRIDE}"); fi ;;
         *)     echo "build_compose_f_args: mode must be blue|green|both" >&2; exit 1 ;;
     esac
+    # Compose extra del proyecto (blue-green override).
+    # Busca compose.bluegreen-{color}.yaml o compose.bluegreen.yaml (para both).
+    # Deriva la ruta desde DOCKER_COMPOSE_APP o DOCKER_COMPOSE_BG.
+    # Rutas relativas se resuelven desde el directorio del ENV_FILE (raíz del proyecto real).
+    local env_dir
+    env_dir="$(dirname "${ENV_FILE}")"
+    local bg_base_dir=""
+    local bg_ext="yaml"
+    if [[ -n "${DOCKER_COMPOSE_BG:-}" ]]; then
+        bg_base_dir="$(dirname "${DOCKER_COMPOSE_BG}")"
+        bg_ext="${DOCKER_COMPOSE_BG##*.}"
+    elif [[ -n "${DOCKER_COMPOSE_APP:-}" ]]; then
+        bg_base_dir="$(dirname "${DOCKER_COMPOSE_APP}")"
+        bg_ext="${DOCKER_COMPOSE_APP##*.}"
+    fi
+    if [[ -n "${bg_base_dir}" ]]; then
+        local resolve_dir="${bg_base_dir}"
+        [[ "${resolve_dir}" != /* ]] && resolve_dir="${env_dir}/${resolve_dir}"
+        case "${mode}" in
+            blue)
+                local c="${resolve_dir}/compose.bluegreen-blue.${bg_ext}"
+                [[ -f "${c}" ]] && COMPOSE_F_ARGS+=(-f "${c}") ;;
+            green)
+                local c="${resolve_dir}/compose.bluegreen-green.${bg_ext}"
+                [[ -f "${c}" ]] && COMPOSE_F_ARGS+=(-f "${c}") ;;
+            both)
+                local c="${resolve_dir}/compose.bluegreen.${bg_ext}"
+                [[ -f "${c}" ]] && COMPOSE_F_ARGS+=(-f "${c}") ;;
+        esac
+    fi
 }
 
 # Ejecuta docker compose con los -f apropiados. Modo: blue | green | both.
@@ -161,6 +191,14 @@ check_health() {
         if docker inspect "${container_name}" > /dev/null 2>&1; then
             state=$(docker inspect --format='{{.State.Status}}' "${container_name}" 2>/dev/null)
             if [ "${state}" = "running" ]; then
+                # 1) Docker healthcheck (si el compose define uno propio)
+                local health_status
+                health_status=$(docker inspect --format='{{.State.Health.Status}}' "${container_name}" 2>/dev/null || echo "none")
+                if [ "${health_status}" = "healthy" ]; then
+                    print_message "${CLR_GREEN}" "✓ ${container_name} is healthy"
+                    return 0
+                fi
+                # 2) wget inside container
                 container_ip=$(docker inspect --format="${inspect_format_ip}" "${container_name}" 2>/dev/null | head -1)
                 if [ -n "${container_ip}" ]; then
                     if docker exec "${container_name}" wget --quiet --tries=1 --spider \
@@ -168,6 +206,7 @@ check_health() {
                         print_message "${CLR_GREEN}" "✓ ${container_name} is healthy"
                         return 0
                     fi
+                    # 3) curl from host via container IP
                     external_url="http://${container_ip}:${port}${health_path}"
                     if curl -f -s --max-time 2 "${external_url}" > /dev/null 2>&1; then
                         print_message "${CLR_GREEN}" "✓ ${container_name} is healthy"

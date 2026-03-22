@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 readonly PROJECT_ROOT
-readonly ENV_FILE="${PROJECT_ROOT}/.env"
+readonly ENV_FILE="${ENV_FILE:-${PROJECT_ROOT}/.env}"
 
 # shellcheck source=../../scripts/lib/parse-env.sh
 source "${PROJECT_ROOT}/deploy/scripts/lib/parse-env.sh"

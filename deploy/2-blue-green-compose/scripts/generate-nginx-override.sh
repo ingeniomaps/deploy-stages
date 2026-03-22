@@ -12,6 +12,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 readonly PROJECT_ROOT
 readonly DOCKER_DIR="${SCRIPT_DIR}/../docker"
 readonly ROOT_ENV="${ENV_FILE:-${PROJECT_ROOT}/.env}"
+# Nota: ROOT_ENV usa ENV_FILE exportado por el Makefile del proyecto
 readonly OVERRIDE_FILE="${DOCKER_DIR}/docker-compose.override.yml"
 
 # shellcheck source=../../scripts/lib/parse-env.sh
