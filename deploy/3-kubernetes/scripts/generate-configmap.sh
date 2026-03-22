@@ -7,7 +7,7 @@ set -euo pipefail
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly K8S_DIR="${SCRIPT_DIR}/.."
 readonly PROJECT_ROOT="$(cd "${K8S_DIR}/../.." && pwd)"
-readonly ROOT_ENV="${PROJECT_ROOT}/.env"
+readonly ROOT_ENV="${ENV_FILE:-${PROJECT_ROOT}/.env}"
 # Sin argumento: genera configmap-blue.yml y configmap-green.yml. Con "blue" o "green": solo ese.
 readonly SUFFIX_ARG="${1:-}"
 
@@ -71,12 +71,13 @@ if [[ -z "${ENV_ARR[PROJECT_PORT]:-}" ]]; then
     ENV_ARR[PROJECT_PORT]="3000"
 fi
 
-# Nombre base sin prefijo: patch_k8s_names en blue-green.sh aplica PROJECT_PREFIX después
+# Nombre con prefijo para coincidir con lo que patch_k8s_names pone en el deployment
 if [[ -z "${ENV_ARR[PROJECT_NAME]:-}" ]]; then
     echo "Error: PROJECT_NAME no definido en .env" >&2
     exit 1
 fi
-CONFIGMAP_BASE="${ENV_ARR[PROJECT_NAME]}-config"
+PROJECT_PREFIX="${ENV_ARR[PROJECT_PREFIX]:-}"
+CONFIGMAP_BASE="${PROJECT_PREFIX:+${PROJECT_PREFIX}-}${ENV_ARR[PROJECT_NAME]}-config"
 
 write_one_configmap() {
     local name="${1:?}"
