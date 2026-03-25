@@ -529,11 +529,13 @@ cmd_down() {
     local target="${1:-}"
 
     if [[ -z "${target}" ]]; then
-        # Bajar todo: ambos deployments + service + configmap
+        # Bajar todo: ambos deployments + service + configmaps
         print_message "${YELLOW}" "Eliminando todos los recursos Kubernetes..."
         kubectl delete -k "${K8S_DIR}/overlays/blue" --ignore-not-found=true 2>/dev/null || true
         kubectl delete -k "${K8S_DIR}/overlays/green" --ignore-not-found=true 2>/dev/null || true
         kubectl delete -k "${K8S_DIR}/service" --ignore-not-found=true 2>/dev/null || true
+        # Eliminar Service explícitamente (kustomize puede fallar si los configmaps generados no existen en disco)
+        kubectl delete service "${SERVICE_NAME}" -n "${NAMESPACE}" --ignore-not-found=true 2>/dev/null || true
         print_message "${GREEN_C}" "✓ Todos los recursos eliminados."
     elif [[ "${target}" == "blue" || "${target}" == "green" ]]; then
         # Si el target es el activo, cambiar al otro primero
