@@ -47,6 +47,7 @@ fi
 PROJECT_IMAGE="$(get_env_value PROJECT_IMAGE "${PROJECT_NAME}")"
 PROJECT_VERSION="$(get_env_value PROJECT_VERSION latest)"
 PROJECT_PREFIX="$(get_env_value PROJECT_PREFIX "")"
+PROJECT_PORT="$(get_env_value PROJECT_PORT 3000)"
 K8S_NODE_PORT="$(get_env_value K8S_NODE_PORT 30080)"
 HEALTH_PATH="$(get_env_value HEALTH_PATH /health)"
 # HPA: minimo/maximo de replicas y target CPU % (evita pasarse del limite = control de coste)
@@ -199,8 +200,18 @@ EOF
         health_path_json="$(printf '%s' "${HEALTH_PATH}" | sed 's/\\/\\\\/g; s/"/\\"/g')"
         health_path_json="\"${health_path_json}\""
 
+        # B3 fix: el base/deployment.yml hardcodea containerPort=3000 y probes con port: http.
+        # Sin esta override, pods quedan 0/Ready si PROJECT_PORT != 3000 (probes hit puerto incorrecto).
+        # Validar PROJECT_PORT como entero antes de inyectarlo en JSON.
+        if ! [[ "${PROJECT_PORT}" =~ ^[0-9]+$ ]]; then
+            print_message "${RED}" "Error: PROJECT_PORT debe ser un entero (recibido: '${PROJECT_PORT}')"
+            exit 1
+        fi
         cat > "${health_patch}" << EOF
 [
+  {"op": "replace", "path": "/spec/template/spec/containers/0/ports/0/containerPort", "value": ${PROJECT_PORT}},
+  {"op": "replace", "path": "/spec/template/spec/containers/0/readinessProbe/httpGet/port", "value": ${PROJECT_PORT}},
+  {"op": "replace", "path": "/spec/template/spec/containers/0/livenessProbe/httpGet/port", "value": ${PROJECT_PORT}},
   {"op": "replace", "path": "/spec/template/spec/containers/0/readinessProbe/httpGet/path", "value": ${health_path_json}},
   {"op": "replace", "path": "/spec/template/spec/containers/0/livenessProbe/httpGet/path", "value": ${health_path_json}}
 ]
@@ -222,11 +233,10 @@ patches:
   - path: project-deployment-patch.yml
     target:
       kind: Deployment
-patchesJson6902:
-  - target:
+  - path: health-path-patch.json
+    target:
       kind: Deployment
       name: ${deployment_name}
-    path: health-path-patch.json
 images:
   - name: mi-aplicacion
     newName: ${PROJECT_IMAGE}
@@ -248,11 +258,10 @@ patches:
   - path: deployment-patch.yml
     target:
       kind: Deployment
-patchesJson6902:
-  - target:
+  - path: health-path-patch.json
+    target:
       kind: Deployment
       name: ${deployment_name}
-    path: health-path-patch.json
 images:
   - name: mi-aplicacion
     newName: ${PROJECT_IMAGE}
