@@ -8,7 +8,7 @@ set -euo pipefail
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 readonly DOCKER_DIR="${SCRIPT_DIR}/../docker"
-readonly ROOT_ENV="${PROJECT_ROOT}/.env"
+readonly ROOT_ENV="${ENV_FILE:-${PROJECT_ROOT}/.env}"
 readonly OUT_BLUE="${DOCKER_DIR}/docker-compose.env-include-blue.yml"
 readonly OUT_GREEN="${DOCKER_DIR}/docker-compose.env-include-green.yml"
 
@@ -45,8 +45,9 @@ if [[ -f "${ROOT_ENV}" ]]; then
 fi
 
 # 2) .env raíz (mayor prioridad — último en la lista)
+# ROOT_ENV honra ENV_FILE override (el Makefile del consumidor exporta ENV_FILE).
 if [[ -f "${ROOT_ENV}" ]]; then
-    root_abs="$(cd "${PROJECT_ROOT}" && pwd)/.env"
+    root_abs="$(cd "$(dirname "${ROOT_ENV}")" && pwd)/$(basename "${ROOT_ENV}")"
     # Evitar duplicado si ya se incluyó vía ENV_FILE
     local_dup=false
     for existing in "${FILES[@]}"; do

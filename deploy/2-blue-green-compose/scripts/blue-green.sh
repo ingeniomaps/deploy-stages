@@ -97,18 +97,21 @@ build_compose_f_args() {
     fi
     if [[ -n "${bg_base_dir}" ]]; then
         local resolve_dir="${bg_base_dir}"
-        [[ "${resolve_dir}" != /* ]] && resolve_dir="${env_dir}/${resolve_dir}"
+        if [[ "${resolve_dir}" != /* ]]; then
+            resolve_dir="${env_dir}/${resolve_dir}"
+        fi
+        local c=""
         case "${mode}" in
-            blue)
-                local c="${resolve_dir}/compose.bluegreen-blue.${bg_ext}"
-                [[ -f "${c}" ]] && COMPOSE_F_ARGS+=(-f "${c}") ;;
-            green)
-                local c="${resolve_dir}/compose.bluegreen-green.${bg_ext}"
-                [[ -f "${c}" ]] && COMPOSE_F_ARGS+=(-f "${c}") ;;
-            both)
-                local c="${resolve_dir}/compose.bluegreen.${bg_ext}"
-                [[ -f "${c}" ]] && COMPOSE_F_ARGS+=(-f "${c}") ;;
+            blue)  c="${resolve_dir}/compose.bluegreen-blue.${bg_ext}" ;;
+            green) c="${resolve_dir}/compose.bluegreen-green.${bg_ext}" ;;
+            both)  c="${resolve_dir}/compose.bluegreen.${bg_ext}" ;;
         esac
+        # Override de proyecto opcional: solo agregamos si existe.
+        # Usar `if`/`fi` en vez de `[[ -f X ]] && Y` para que `set -e` no aborte el script
+        # cuando el override no existe (caso típico — el proyecto sólo lo provee si lo necesita).
+        if [[ -n "${c}" ]] && [[ -f "${c}" ]]; then
+            COMPOSE_F_ARGS+=(-f "${c}")
+        fi
     fi
 }
 
