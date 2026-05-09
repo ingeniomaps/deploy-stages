@@ -298,3 +298,11 @@ push-k8s: build ## (ETAPA 3) Subir imagen al registro
 		"$(REGISTRY_URL)/$(BUILD_IMAGE_NAME):$(APP_VERSION)"
 	@docker push \
 		"$(REGISTRY_URL)/$(BUILD_IMAGE_NAME):$(APP_VERSION)"
+
+# ============================================================================
+# Tests del framework
+# ============================================================================
+
+.PHONY: test-deploy
+test-deploy: ## Ejecuta los tests bash del framework deploy-stages
+	@bash tests/run.sh

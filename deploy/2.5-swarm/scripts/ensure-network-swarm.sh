@@ -56,9 +56,22 @@ if [[ -n "${existing_driver}" ]]; then
 fi
 
 echo "Creando red overlay: ${NETWORK_NAME}"
+
+# F2 fix: Si NETWORK_SWARM_ATTACHABLE=1|true, crear la overlay como --attachable.
+# Esto permite que standalone containers (no-swarm services) se conecten a la overlay
+# vía `docker network connect`. Útil cuando el stack Swarm necesita comunicarse con
+# servicios externos al stack (p. ej. postgres/redis levantados con docker-compose).
+# Default: false (overlay solo para Swarm services, comportamiento histórico preservado).
+attachable_arg=""
+case "$(printf '%s' "${NETWORK_SWARM_ATTACHABLE:-0}" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes) attachable_arg="--attachable" ;;
+esac
+
 # Si NETWORK_SWARM es un nombre distinto a NETWORK, no reusar NETWORK_SUBNET (evita solapamiento con la red bridge).
 if [[ -n "${NETWORK_SUBNET}" ]] && [[ -z "${NETWORK_SWARM}" ]]; then
-    docker network create --driver overlay --subnet "${NETWORK_SUBNET}" "${NETWORK_NAME}"
+    # shellcheck disable=SC2086
+    docker network create --driver overlay ${attachable_arg} --subnet "${NETWORK_SUBNET}" "${NETWORK_NAME}"
 else
-    docker network create --driver overlay "${NETWORK_NAME}"
+    # shellcheck disable=SC2086
+    docker network create --driver overlay ${attachable_arg} "${NETWORK_NAME}"
 fi
